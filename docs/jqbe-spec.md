@@ -223,4 +223,3 @@ Servers should not expose internal implementation details in error responses.
 Minimum Specification — Draft 0.10
 Generated from a conversation with Claude AI.
 Reviewed by SEK 2/25/2026.
-
