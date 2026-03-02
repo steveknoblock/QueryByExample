@@ -1,0 +1,11 @@
+services:
+  rust-dev:
+    build: .
+    working_dir: /app
+    volumes:
+      - .:/app
+      - cargo-cache:/usr/local/cargo/registry  # caches downloaded crates
+    command: cargo watch -x run   # requires cargo-watch (see below)
+
+volumes:
+  cargo-cache:
