@@ -302,7 +302,7 @@ mod tests {
 
     #[test]
     fn test_full_example() {
-        let input = r#"
+        let input = r##"
         {
             "user": {
                 "id": 1,
@@ -317,7 +317,7 @@ mod tests {
                     "total": "*"
                 }
             }
-        }"#;
+        }"##;
 
         let q = parse_str(input).unwrap();
         let user = match &q.fields["user"] {
