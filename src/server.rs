@@ -2,10 +2,9 @@ use axum::{
     body::Body,
     extract::State,
     http::{Method, Request, StatusCode},
-    response::{IntoResponse, Response},
-    routing::on,
+    response::Response,
+    routing::any,
     Router,
-    MethodFilter,
 };
 use serde_json::{json, Value};
 use std::sync::Arc;
@@ -18,8 +17,6 @@ use crate::store::Store;
 // Shared application state
 // ---------------------------------------------------------------------------
 
-/// Application state shared across all requests.
-/// Wrapped in Arc so it can be cloned cheaply across threads.
 #[derive(Clone)]
 pub struct AppState {
     pub store: Arc<Store>,
@@ -29,7 +26,6 @@ pub struct AppState {
 // Custom QUERY method
 // ---------------------------------------------------------------------------
 
-/// The QUERY HTTP method as defined in the IETF draft.
 fn query_method() -> Method {
     Method::from_bytes(b"QUERY").unwrap()
 }
@@ -40,11 +36,26 @@ fn query_method() -> Method {
 
 pub fn router(state: AppState) -> Router {
     Router::new()
-        .route(
-            "/*path",
-            on(MethodFilter::try_from(query_method()).unwrap(), handle_query),
-        )
+        .route("/", any(dispatch))
+        .route("/{*path}", any(dispatch))
         .with_state(state)
+}
+
+/// Dispatch incoming requests — accept QUERY, reject everything else.
+async fn dispatch(
+    State(state): State<AppState>,
+    request: Request<Body>,
+) -> Response {
+    if request.method() == query_method() {
+        handle_query(state, request).await
+    } else {
+        error_response(
+            StatusCode::METHOD_NOT_ALLOWED,
+            "method_not_allowed",
+            "This endpoint only accepts QUERY requests",
+            None,
+        )
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -52,10 +63,9 @@ pub fn router(state: AppState) -> Router {
 // ---------------------------------------------------------------------------
 
 async fn handle_query(
-    State(state): State<AppState>,
+    state: AppState,
     request: Request<Body>,
 ) -> Response {
-    // Read the request body as bytes.
     let body_bytes = match axum::body::to_bytes(request.into_body(), usize::MAX).await {
         Ok(bytes) => bytes,
         Err(_) => {
@@ -68,7 +78,6 @@ async fn handle_query(
         }
     };
 
-    // Parse body as a UTF-8 string.
     let body_str = match std::str::from_utf8(&body_bytes) {
         Ok(s) => s,
         Err(_) => {
@@ -81,7 +90,6 @@ async fn handle_query(
         }
     };
 
-    // Parse the query document.
     let query = match parser::parse_str(body_str) {
         Ok(q) => q,
         Err(e) => {
@@ -89,10 +97,8 @@ async fn handle_query(
         }
     };
 
-    // Execute the query against the store.
     match executor::execute(&query, state.store.document()) {
         Ok(Value::Null) => {
-            // Null signals no match — return empty object.
             json_response(StatusCode::OK, &json!({}))
         }
         Ok(result) => {
@@ -116,7 +122,7 @@ fn parse_error_response(e: ParseError) -> Response {
             "Query document must be a JSON object",
             None,
         ),
-        ParseError::InvalidOperatorValue { key, reason } => error_response(
+        ParseError::InvalidOperatorValue { key, reason: _ } => error_response(
             StatusCode::UNPROCESSABLE_ENTITY,
             "invalid_operator",
             "Invalid value for operator",
@@ -128,7 +134,7 @@ fn parse_error_response(e: ParseError) -> Response {
             "Unknown operator",
             Some(&key),
         ),
-        ParseError::InvalidCollectionOperator { key, reason } => error_response(
+        ParseError::InvalidCollectionOperator { key, reason: _ } => error_response(
             StatusCode::UNPROCESSABLE_ENTITY,
             "invalid_operator",
             "Invalid collection operator",
@@ -145,7 +151,7 @@ fn execute_error_response(e: ExecuteError) -> Response {
             "Field not found in document",
             Some(&path),
         ),
-        ExecuteError::IncomparableType { path, operator } => error_response(
+        ExecuteError::IncomparableType { path, operator: _ } => error_response(
             StatusCode::UNPROCESSABLE_ENTITY,
             "invalid_value",
             "Cannot apply operator to field type",
