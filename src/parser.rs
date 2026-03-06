@@ -214,9 +214,18 @@ fn try_parse_operator(
             let inner = parse_field_entry(value)?;
             Ok(Some(Operator::MatchOnly(Box::new(inner))))
         },
-        // Not an operator key — let the caller treat it as a nested node.
+        // Single-character or symbolic keys are treated as operator attempts.
+        // Any unrecognised one is an error.
+        _ if is_operator_key(key) => Err(ParseError::UnknownOperator(key.to_string())),
+        // Non-symbolic keys are regular field names, not operators.
         _ => Ok(None),
     }
+}
+
+// 
+fn is_operator_key(key: &str) -> bool {
+    matches!(key, ">" | ">=" | "<" | "<=" | "!=" | "|" | "?" | "^" | "v" | "#" | "@")
+    || key.chars().all(|c| !c.is_alphanumeric() && c != '_')
 }
 
 // ---------------------------------------------------------------------------

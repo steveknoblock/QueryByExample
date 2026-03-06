@@ -163,12 +163,6 @@ fn execute_error_response(e: ExecuteError) -> Response {
             "Expected an object at path",
             Some(&path),
         ),
-        ExecuteError::NotAnArray { path } => error_response(
-            StatusCode::UNPROCESSABLE_ENTITY,
-            "invalid_field",
-            "Expected an array at path",
-            Some(&path),
-        ),
     }
 }
 

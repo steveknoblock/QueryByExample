@@ -14,8 +14,6 @@ pub enum ExecuteError {
     IncomparableType { path: String, operator: String },
     /// A field in the query was expected to be an object but was a scalar.
     NotAnObject { path: String },
-    /// A field in the query was expected to be an array but was not.
-    NotAnArray { path: String },
 }
 
 impl std::fmt::Display for ExecuteError {
@@ -27,8 +25,6 @@ impl std::fmt::Display for ExecuteError {
                 write!(f, "Cannot apply operator \"{operator}\" to field: {path}"),
             ExecuteError::NotAnObject { path } =>
                 write!(f, "Expected an object at: {path}"),
-            ExecuteError::NotAnArray { path } =>
-                write!(f, "Expected an array at: {path}"),
         }
     }
 }
