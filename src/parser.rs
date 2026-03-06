@@ -38,6 +38,7 @@ pub enum Operator {
     Lte(Value),
     Ne(Value),
     In(Vec<Value>),
+    MatchOnly(Box<FieldEntry>),
 }
 
 /// Collection control options extracted from operator keys within a node.
@@ -208,7 +209,11 @@ fn try_parse_operator(
                 }
             })?;
             Ok(Some(Operator::In(arr.clone())))
-        }
+        },
+        "?" => {
+            let inner = parse_field_entry(value)?;
+            Ok(Some(Operator::MatchOnly(Box::new(inner))))
+        },
         // Not an operator key — let the caller treat it as a nested node.
         _ => Ok(None),
     }

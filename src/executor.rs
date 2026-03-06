@@ -75,12 +75,31 @@ fn execute_node(
                 result.insert(field_name.clone(), doc_value.clone());
             }
 
-            // Operator — evaluate the comparison and include in output.
             FieldEntry::Operator(op) => {
-                if !evaluate_operator(op, doc_value, &field_path)? {
-                    return Ok(Value::Null); // signals no match to caller
+                match op {
+                    Operator::MatchOnly(inner) => {
+                        // Evaluate the inner entry but do not project.
+                        match inner.as_ref() {
+                            FieldEntry::Match(expected) => {
+                                if doc_value != expected {
+                                    return Ok(Value::Null);
+                                }
+                            }
+                            FieldEntry::Operator(inner_op) => {
+                                if !evaluate_operator(inner_op, doc_value, &field_path)? {
+                                    return Ok(Value::Null);
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                    _ => {
+                        if !evaluate_operator(op, doc_value, &field_path)? {
+                            return Ok(Value::Null);
+                        }
+                        result.insert(field_name.clone(), doc_value.clone());
+                    }
                 }
-                result.insert(field_name.clone(), doc_value.clone());
             }
 
             // Nested object or collection.
@@ -188,7 +207,7 @@ fn evaluate_operator(
             let r = numeric(rhs, op, path)?;
             Ok(lhs > r)
         }
-        Operator::Gte(rhs) => {
+            Operator::Gte(rhs) => {
             let r = numeric(rhs, op, path)?;
             Ok(lhs >= r)
         }
@@ -202,6 +221,7 @@ fn evaluate_operator(
         }
         Operator::Ne(rhs) => Ok(value != rhs),
         Operator::In(_) => unreachable!(),
+        Operator::MatchOnly(_) => Ok(true),
     }
 }
 
@@ -220,6 +240,7 @@ fn op_symbol(op: &Operator) -> &'static str {
         Operator::Lte(_) => "<=",
         Operator::Ne(_)  => "!=",
         Operator::In(_)  => "|",
+        Operator::MatchOnly(_) => "?",
     }
 }
 
