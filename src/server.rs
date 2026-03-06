@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 use crate::executor::{self, ExecuteError};
 use crate::parser::{self, ParseError};
-use crate::store::Store;
+use crate::store::{Store, StoreError};
 
 // ---------------------------------------------------------------------------
 // Shared application state
@@ -66,6 +66,10 @@ async fn handle_query(
     state: AppState,
     request: Request<Body>,
 ) -> Response {
+    // Capture the request path before consuming the request.
+    let url_path = request.uri().path().to_string();
+
+    // Read the request body as bytes.
     let body_bytes = match axum::body::to_bytes(request.into_body(), usize::MAX).await {
         Ok(bytes) => bytes,
         Err(_) => {
@@ -78,6 +82,7 @@ async fn handle_query(
         }
     };
 
+    // Parse body as a UTF-8 string.
     let body_str = match std::str::from_utf8(&body_bytes) {
         Ok(s) => s,
         Err(_) => {
@@ -90,14 +95,30 @@ async fn handle_query(
         }
     };
 
+    // Parse the query document.
     let query = match parser::parse_str(body_str) {
         Ok(q) => q,
+        Err(e) => return parse_error_response(e),
+    };
+
+    // Look up the document for this path.
+    let document = match state.store.get(&url_path) {
+        Ok(Some(doc)) => doc,
+        Ok(None) => {
+            return error_response(
+                StatusCode::NOT_FOUND,
+                "resource_not_found",
+                "No document found at this path",
+                Some(&url_path),
+            );
+        }
         Err(e) => {
-            return parse_error_response(e);
+            return store_error_response(e);
         }
     };
 
-    match executor::execute(&query, state.store.document()) {
+    // Execute the query against the document.
+    match executor::execute(&query, &document) {
         Ok(Value::Null) => {
             json_response(StatusCode::OK, &json!({}))
         }
@@ -164,6 +185,15 @@ fn execute_error_response(e: ExecuteError) -> Response {
             Some(&path),
         ),
     }
+}
+
+fn store_error_response(e: StoreError) -> Response {
+    error_response(
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "store_error",
+        &e.to_string(),
+        None,
+    )
 }
 
 fn error_response(
