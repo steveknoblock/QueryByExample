@@ -18,11 +18,12 @@ A query document is a valid JSON document sent as the body of a QUERY request to
 
 ### 2.1 Field Semantics
 
-Every field in a query document has one of three meanings determined by its value:
+Every field in a query document has one of the following meanings determined by its value:
 
-- **Return** — a field with value `"*"` is included in the response. The response will contain this field with its value from the resource.
-- **Match** — a field with a literal value other than `"*"` constrains the result to documents where that field equals that value.
-- **Absent** — a field not present in the query document is not returned in the response.
+- **Project** — a field with value `"*"` is included in the response with its value from the resource. No constraint is applied.
+- **Match and Project** — a field with a literal value or operator constrains the result and includes the field in the response when the constraint is satisfied.
+- **Match Only** — a field wrapped in `{ "?": <value> }` or `{ "?": <operator> }` constrains the result but is not included in the response.
+- **Absent** — a field not present in the query document is not returned in the response and no constraint is applied.
 
 ### 2.2 Example
 
@@ -35,8 +36,8 @@ The following query document finds the user with id 1, returns their name and em
     "name": "*",
     "email": "*",
     "address": {
-      "city": "*",
-      "country": "US"
+      "country": { "?": "US" },
+      "city": "*"
     },
     "orders": {
       "status": "pending",
@@ -47,11 +48,44 @@ The following query document finds the user with id 1, returns their name and em
 }
 ```
 
-### 2.3 Nested Documents
+Here `country` is used as a filter only — it does not appear in the response. `status` is matched and projected. `name`, `email`, `city`, `id`, and `total` are projected without constraint.
+
+### 2.3 Match Only
+
+The `"?"` operator wraps a value or comparison operator to express a constraint that is not projected into the response. This allows clients to filter data without requiring unwanted fields in the result.
+
+A match-only literal value:
+
+```json
+{
+  "users": {
+    "address": {
+      "country": { "?": "US" },
+      "city": "*"
+    }
+  }
+}
+```
+
+A match-only comparison operator:
+
+```json
+{
+  "orders": {
+    "total": { "?": { ">": 100 } },
+    "id": "*",
+    "product": "*"
+  }
+}
+```
+
+This returns `id` and `product` for orders over 100 without returning `total`.
+
+### 2.4 Nested Documents
 
 A field whose value is a JSON object specifies the shape and constraints of a nested document. The query is applied recursively to the nested document. A field whose value is `"*"` and which corresponds to an object in the resource returns the entire subtree without requiring its shape to be specified.
 
-### 2.4 Collections
+### 2.5 Collections
 
 When a field corresponds to a collection in the resource, the query document specifies the shape and constraints of each member of the collection. The response contains all members of the collection that match the constraints, each shaped according to the query document.
 
@@ -71,16 +105,28 @@ Operators extend the query document for cases where a literal value is insuffici
 | `"<="` | Less than or equal |
 | `"!="` | Not equal |
 | `"|"` | Matches any value in the array |
+| `"?"` | Match only — apply constraint but do not project the field |
 
-Example:
+Example — match and project:
 
 ```json
 {
-  "order": {
+  "orders": {
     "total": { ">": 100 },
     "status": { "|": ["pending", "processing"] },
-    "id": "*",
-    "total": "*"
+    "id": "*"
+  }
+}
+```
+
+Example — match only:
+
+```json
+{
+  "orders": {
+    "total": { "?": { ">": 100 } },
+    "status": { "?": { "|": ["pending", "processing"] } },
+    "id": "*"
   }
 }
 ```
@@ -113,7 +159,7 @@ Example:
 
 ## 4. Response Format
 
-The response to a QUERY request is a valid JSON document. The structure of the response mirrors the structure of the query document, containing only the fields specified with `"*"` in the query document, shaped according to the query.
+The response to a QUERY request is a valid JSON document. The structure of the response mirrors the structure of the query document, containing only the projected fields shaped according to the query.
 
 ### 4.1 Status Codes
 
@@ -141,10 +187,9 @@ Query:
     "name": "*",
     "email": "*",
     "orders": {
-      "status": "pending",
+      "status": { "?": "pending" },
       "total": { ">": 100 },
-      "id": "*",
-      "total": "*"
+      "id": "*"
     }
   }
 }
@@ -155,11 +200,12 @@ Response:
 ```json
 {
   "user": {
+    "id": 1,
     "name": "Alice",
     "email": "alice@example.com",
     "orders": [
       { "id": 42, "total": 150 },
-      { "id": 43, "total": 200 }
+      { "id": 45, "total": 200 }
     ]
   }
 }
@@ -220,6 +266,6 @@ Servers should not expose internal implementation details in error responses.
 
 ### End Notes
 
-Minimum Specification — Draft 0.10
+Minimum Specification — Draft 0.2
 Generated from a conversation with Claude AI.
 Reviewed by SEK 2/25/2026.
