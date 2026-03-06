@@ -67,18 +67,20 @@ fn execute_node(
                 result.insert(field_name.clone(), doc_value.clone());
             }
 
-            // Match — check equality, do not include in output.
+            // Match — check equality and include in output.
             FieldEntry::Match(expected) => {
                 if doc_value != expected {
                     return Ok(Value::Null); // signals no match to caller
                 }
+                result.insert(field_name.clone(), doc_value.clone());
             }
 
-            // Operator — evaluate the comparison.
+            // Operator — evaluate the comparison and include in output.
             FieldEntry::Operator(op) => {
                 if !evaluate_operator(op, doc_value, &field_path)? {
                     return Ok(Value::Null); // signals no match to caller
                 }
+                result.insert(field_name.clone(), doc_value.clone());
             }
 
             // Nested object or collection.
