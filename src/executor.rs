@@ -471,43 +471,132 @@ mod tests {
         assert_eq!(orders[0]["total"], 200); // first skipped by offset
     }
 
+#[test]
+fn test_full_specification_example() {
+    let result = run(
+        &json!({
+            "user": {
+                "id": 1,
+                "name": "*",
+                "email": "*",
+                "orders": {
+                    "status": "pending",
+                    "total": { ">": 100 },
+                    "id": "*"
+                }
+            }
+        }),
+        &json!({
+            "user": {
+                "id": 1,
+                "name": "Alice",
+                "email": "alice@example.com",
+                "orders": [
+                    { "id": 42, "status": "pending",  "total": 150 },
+                    { "id": 43, "status": "pending",  "total": 50  },
+                    { "id": 44, "status": "complete", "total": 200 },
+                    { "id": 45, "status": "pending",  "total": 200 },
+                ]
+            }
+        }),
+    ).unwrap();
+
+    assert_eq!(result["user"]["name"], "Alice");
+    assert_eq!(result["user"]["email"], "alice@example.com");
+
+    let orders = result["user"]["orders"].as_array().unwrap();
+    assert_eq!(orders.len(), 2); // id 42 and 45 match
+    assert_eq!(orders[0]["id"], 42);
+    assert_eq!(orders[0]["status"], "pending");
+    assert_eq!(orders[0]["total"], 150);
+    assert_eq!(orders[1]["id"], 45);
+    assert_eq!(orders[1]["status"], "pending");
+    assert_eq!(orders[1]["total"], 200);
+}
+
     #[test]
-    fn test_full_specification_example() {
-        let result = run(
-            &json!({
-                "user": {
-                    "id": 1,
-                    "name": "*",
-                    "email": "*",
-                    "orders": {
-                        "status": "pending",
-                        "total": { ">": 100 },
-                        "id": "*",
-                        "total": "*"
-                    }
-                }
-            }),
-            &json!({
-                "user": {
-                    "id": 1,
-                    "name": "Alice",
-                    "email": "alice@example.com",
-                    "orders": [
-                        { "id": 42, "status": "pending",  "total": 150 },
-                        { "id": 43, "status": "pending",  "total": 50  },
-                        { "id": 44, "status": "complete", "total": 200 },
-                        { "id": 45, "status": "pending",  "total": 200 },
-                    ]
-                }
-            }),
-        ).unwrap();
+fn test_match_only_literal_passes() {
+    let result = run(
+        &json!({
+            "address": {
+                "country": { "?": "US" },
+                "city": "*"
+            }
+        }),
+        &json!({
+            "address": {
+                "country": "US",
+                "city": "New York"
+            }
+        }),
+    ).unwrap();
 
-        assert_eq!(result["user"]["name"], "Alice");
-        assert_eq!(result["user"]["email"], "alice@example.com");
+    // city is projected
+    assert_eq!(result["address"]["city"], "New York");
+    // country is not in the response
+    assert!(result["address"].get("country").is_none());
+}
 
-        let orders = result["user"]["orders"].as_array().unwrap();
-        assert_eq!(orders.len(), 2); // id 42 and 45 match
-        assert_eq!(orders[0]["id"], 42);
-        assert_eq!(orders[1]["id"], 45);
-    }
+#[test]
+fn test_match_only_literal_fails() {
+    let result = run(
+        &json!({
+            "address": {
+                "country": { "?": "US" },
+                "city": "*"
+            }
+        }),
+        &json!({
+            "address": {
+                "country": "CA",
+                "city": "Toronto"
+            }
+        }),
+    ).unwrap();
+
+    // document did not match — null returned
+    assert!(result.is_null());
+}
+
+#[test]
+fn test_match_only_operator_passes() {
+    let result = run(
+        &json!({
+            "total": { "?": { ">": 100 } },
+            "id": "*",
+            "product": "*"
+        }),
+        &json!({
+            "id": 42,
+            "total": 150,
+            "product": "Widget A"
+        }),
+    ).unwrap();
+
+    // id and product are projected
+    assert_eq!(result["id"], 42);
+    assert_eq!(result["product"], "Widget A");
+    // total is not in the response
+    assert!(result.get("total").is_none());
+}
+
+#[test]
+fn test_match_only_operator_fails() {
+    let result = run(
+        &json!({
+            "total": { "?": { ">": 100 } },
+            "id": "*",
+            "product": "*"
+        }),
+        &json!({
+            "id": 43,
+            "total": 50,
+            "product": "Widget B"
+        }),
+    ).unwrap();
+
+    // document did not match — null returned
+    assert!(result.is_null());
+}
+
 }
